@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from pyspark import since
+from pyspark import since, keyword_only
 from pyspark.ml.util import *
 from pyspark.ml.wrapper import JavaEstimator, JavaModel
 from pyspark.ml.param.shared import *
@@ -92,7 +92,8 @@ class KMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIter, HasTol
     initMode = Param(Params._dummy(), "initMode",
                      "the initialization algorithm. This can be either \"random\" to " +
                      "choose random points as initial cluster centers, or \"k-means||\" " +
-                     "to use a parallel variant of k-means++", TypeConverters.toString)
+                     "to use a parallel variant of k-means++",
+                     typeConverter=TypeConverters.toString)
     initSteps = Param(Params._dummy(), "initSteps", "steps for k-means initialization mode",
                       typeConverter=TypeConverters.toInt)
 
@@ -130,7 +131,7 @@ class KMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIter, HasTol
         """
         Sets the value of :py:attr:`k`.
         """
-        self._paramMap[self.k] = value
+        self._set(k=value)
         return self
 
     @since("1.5.0")
@@ -145,7 +146,7 @@ class KMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIter, HasTol
         """
         Sets the value of :py:attr:`initMode`.
         """
-        self._paramMap[self.initMode] = value
+        self._set(initMode=value)
         return self
 
     @since("1.5.0")
@@ -160,7 +161,7 @@ class KMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIter, HasTol
         """
         Sets the value of :py:attr:`initSteps`.
         """
-        self._paramMap[self.initSteps] = value
+        self._set(initSteps=value)
         return self
 
     @since("1.5.0")
@@ -171,7 +172,7 @@ class KMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIter, HasTol
         return self.getOrDefault(self.initSteps)
 
 
-class BisectingKMeansModel(JavaModel):
+class BisectingKMeansModel(JavaModel, JavaMLWritable, JavaMLReadable):
     """
     .. note:: Experimental
 
@@ -195,7 +196,8 @@ class BisectingKMeansModel(JavaModel):
 
 
 @inherit_doc
-class BisectingKMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIter, HasSeed):
+class BisectingKMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIter, HasSeed,
+                      JavaMLWritable, JavaMLReadable):
     """
     .. note:: Experimental
 
@@ -225,6 +227,18 @@ class BisectingKMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIte
     True
     >>> rows[2].prediction == rows[3].prediction
     True
+    >>> bkm_path = temp_path + "/bkm"
+    >>> bkm.save(bkm_path)
+    >>> bkm2 = BisectingKMeans.load(bkm_path)
+    >>> bkm2.getK()
+    2
+    >>> model_path = temp_path + "/bkm_model"
+    >>> model.save(model_path)
+    >>> model2 = BisectingKMeansModel.load(model_path)
+    >>> model.clusterCenters()[0] == model2.clusterCenters()[0]
+    array([ True,  True], dtype=bool)
+    >>> model.clusterCenters()[1] == model2.clusterCenters()[1]
+    array([ True,  True], dtype=bool)
 
     .. versionadded:: 2.0.0
     """
@@ -267,7 +281,7 @@ class BisectingKMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIte
         """
         Sets the value of :py:attr:`k`.
         """
-        self._paramMap[self.k] = value
+        self._set(k=value)
         return self
 
     @since("2.0.0")
@@ -282,7 +296,7 @@ class BisectingKMeans(JavaEstimator, HasFeaturesCol, HasPredictionCol, HasMaxIte
         """
         Sets the value of :py:attr:`minDivisibleClusterSize`.
         """
-        self._paramMap[self.minDivisibleClusterSize] = value
+        self._set(minDivisibleClusterSize=value)
         return self
 
     @since("2.0.0")

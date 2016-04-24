@@ -28,7 +28,8 @@ import org.apache.parquet.hadoop.ParquetOutputCommitter
 
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.sql._
-import org.apache.spark.sql.execution.datasources.LogicalRelation
+import org.apache.spark.sql.execution.DataSourceScanExec
+import org.apache.spark.sql.execution.datasources.{FileScanRDD, HadoopFsRelation, LocalityTestFileSystem, LogicalRelation}
 import org.apache.spark.sql.hive.test.TestHiveSingleton
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.test.SQLTestUtils
@@ -113,7 +114,7 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
     new StructType()
       .add("f1", FloatType, nullable = true)
       .add("f2", ArrayType(BooleanType, containsNull = true), nullable = true),
-    new MyDenseVectorUDT()
+    new UDT.MyDenseVectorUDT()
   ).filter(supportsDataType)
 
   try {
@@ -669,37 +670,40 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
     }
   }
 
-  test("SPARK-9899 Disable customized output committer when speculation is on") {
-    val clonedConf = new Configuration(hadoopConfiguration)
-    val speculationEnabled =
-      sqlContext.sparkContext.conf.getBoolean("spark.speculation", defaultValue = false)
-
-    try {
+  test("Locality support for FileScanRDD") {
+    withHadoopConf(
+      "fs.file.impl" -> classOf[LocalityTestFileSystem].getName,
+      "fs.file.impl.disable.cache" -> "true"
+    ) {
       withTempPath { dir =>
-        // Enables task speculation
-        sqlContext.sparkContext.conf.set("spark.speculation", "true")
+        val path = "file://" + dir.getCanonicalPath
+        val df1 = sqlContext.range(4)
+        df1.coalesce(1).write.mode("overwrite").format(dataSourceName).save(path)
+        df1.coalesce(1).write.mode("append").format(dataSourceName).save(path)
 
-        // Uses a customized output committer which always fails
-        hadoopConfiguration.set(
-          SQLConf.OUTPUT_COMMITTER_CLASS.key,
-          classOf[AlwaysFailOutputCommitter].getName)
-
-        // Code below shouldn't throw since customized output committer should be disabled.
-        val df = sqlContext.range(10).toDF().coalesce(1)
-        df.write.format(dataSourceName).save(dir.getCanonicalPath)
-        checkAnswer(
-          sqlContext
-            .read
+        def checkLocality(): Unit = {
+          val df2 = sqlContext.read
             .format(dataSourceName)
-            .option("dataSchema", df.schema.json)
-            .load(dir.getCanonicalPath),
-          df)
+            .option("dataSchema", df1.schema.json)
+            .load(path)
+
+          val Some(fileScanRDD) = df2.queryExecution.executedPlan.collectFirst {
+            case scan: DataSourceScanExec if scan.rdd.isInstanceOf[FileScanRDD] =>
+              scan.rdd.asInstanceOf[FileScanRDD]
+          }
+
+          val partitions = fileScanRDD.partitions
+          val preferredLocations = partitions.flatMap(fileScanRDD.preferredLocations)
+
+          assert(preferredLocations.distinct.length == 2)
+        }
+
+        checkLocality()
+
+        withSQLConf(SQLConf.PARALLEL_PARTITION_DISCOVERY_THRESHOLD.key -> "0") {
+          checkLocality()
+        }
       }
-    } finally {
-      // Hadoop 1 doesn't have `Configuration.unset`
-      hadoopConfiguration.clear()
-      clonedConf.asScala.foreach(entry => hadoopConfiguration.set(entry.getKey, entry.getValue))
-      sqlContext.sparkContext.conf.set("spark.speculation", speculationEnabled.toString)
     }
   }
 }

@@ -29,9 +29,10 @@ import org.scalatest.BeforeAndAfterAll
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
+import org.apache.spark.sql.catalyst.FunctionIdentifier
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.util._
-import org.apache.spark.sql.execution.Filter
+import org.apache.spark.sql.execution.FilterExec
 import org.apache.spark.util.Utils
 
 /**
@@ -91,6 +92,27 @@ private[sql] trait SQLTestUtils
   }
 
   /**
+   * Sets all Hadoop configurations specified in `pairs`, calls `f`, and then restore all Hadoop
+   * configurations.
+   */
+  protected def withHadoopConf(pairs: (String, String)*)(f: => Unit): Unit = {
+    val (keys, _) = pairs.unzip
+    val originalValues = keys.map(key => Option(hadoopConfiguration.get(key)))
+
+    try {
+      pairs.foreach { case (key, value) =>
+        hadoopConfiguration.set(key, value)
+      }
+      f
+    } finally {
+      keys.zip(originalValues).foreach {
+        case (key, Some(value)) => hadoopConfiguration.set(key, value)
+        case (key, None) => hadoopConfiguration.unset(key)
+      }
+    }
+  }
+
+  /**
    * Sets all SQL configurations specified in `pairs`, calls `f`, and then restore all SQL
    * configurations.
    *
@@ -129,6 +151,27 @@ private[sql] trait SQLTestUtils
   protected def withTempDir(f: File => Unit): Unit = {
     val dir = Utils.createTempDir().getCanonicalFile
     try f(dir) finally Utils.deleteRecursively(dir)
+  }
+
+  /**
+   * Drops functions after calling `f`. A function is represented by (functionName, isTemporary).
+   */
+  protected def withUserDefinedFunction(functions: (String, Boolean)*)(f: => Unit): Unit = {
+    try {
+      f
+    } catch {
+      case cause: Throwable => throw cause
+    } finally {
+      // If the test failed part way, we don't want to mask the failure by failing to remove
+      // temp tables that never got created.
+      try functions.foreach { case (functionName, isTemporary) =>
+        val withTemporary = if (isTemporary) "TEMPORARY" else ""
+        sqlContext.sql(s"DROP $withTemporary FUNCTION IF EXISTS $functionName")
+        assert(
+          !sqlContext.sessionState.catalog.functionExists(FunctionIdentifier(functionName)),
+          s"Function $functionName should have been dropped. But, it still exists.")
+      }
+    }
   }
 
   /**
@@ -199,7 +242,7 @@ private[sql] trait SQLTestUtils
   protected def stripSparkFilter(df: DataFrame): DataFrame = {
     val schema = df.schema
     val withoutFilters = df.queryExecution.sparkPlan transform {
-      case Filter(_, child) => child
+      case FilterExec(_, child) => child
     }
 
     val childRDD = withoutFilters
