@@ -26,6 +26,8 @@ import scala.util.control.NonFatal
 
 import com.fasterxml.jackson.core.JsonFactory
 import org.apache.commons.lang3.StringUtils
+import org.apache.spark.broadcast.Broadcast
+
 
 import org.apache.spark.annotation.{DeveloperApi, Experimental}
 import org.apache.spark.api.java.JavaRDD
@@ -1127,6 +1129,16 @@ class Dataset[T] private[sql](
     RelationalGroupedDataset(toDF(), cols.map(_.expr), RelationalGroupedDataset.GroupByType)
   }
 
+  private[sql] def gapply(
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Broadcast[Object]],
+    schema: StructType,
+    cols: Column*): DataFrame = {
+    val groups = RelationalGroupedDataset(toDF(), cols.map(_.expr), RelationalGroupedDataset.GroupByType)    
+    groups.gapply(func, packageNames, broadcastVars, schema)  
+  }
+
   /**
    * Create a multi-dimensional rollup for the current [[Dataset]] using the specified columns,
    * so we can run aggregation on them.
@@ -1229,7 +1241,7 @@ class Dataset[T] private[sql](
   /**
    * :: Experimental ::
    * (Scala-specific)
-   * Returns a [[KeyValueGroupedDataset]] where the data is grouped by the given key `func`.
+   * Returns a [[,KeyValueGroupedDataset]] where the data is grouped by the given key `func`.
    *
    * @group typedrel
    * @since 2.0.0

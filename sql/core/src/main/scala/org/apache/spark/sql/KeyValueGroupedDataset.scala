@@ -133,6 +133,25 @@ class KeyValueGroupedDataset[K, V] private[sql](
   def flatMapGroups[U](f: FlatMapGroupsFunction[K, V, U], encoder: Encoder[U]): Dataset[U] = {
     flatMapGroups((key, data) => f.call(key, data.asJava).asScala)(encoder)
   }
+/*
+  def flatMapRGroups(rfunc: Array[Byte]): Dataset[V] = {
+    println("Hello from flatMapRGroups!"); 	 
+    println(rfunc.length);
+
+    for (attr <- dataAttributes) { println(attr.toString) }
+
+    Dataset(
+      sqlContext,
+      MapGroupsR(
+        rfunc,
+	unresolvedKEncoder.deserializer,
+	unresolvedVEncoder.deserializer,
+	unresolvedVEncoder.namedExpressions,
+        groupingAttributes,
+        dataAttributes,
+        logicalPlan))
+  }
+*/
 
   /**
    * Applies the given function to each group of data.  For each unique group, the function will

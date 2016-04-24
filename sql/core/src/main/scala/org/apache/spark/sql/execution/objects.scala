@@ -23,6 +23,10 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.{GenerateSafeProjection, GenerateUnsafeProjection, GenerateUnsafeRowJoiner}
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.types.ObjectType
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow
+import org.apache.spark.sql.types._
+import org.apache.spark.api.r._
+import org.apache.spark.TaskContext
 
 /**
  * Helper functions for physical operators that work with user defined objects.
@@ -131,6 +135,64 @@ case class MapGroups(
           getKey(key),
           rowIter.map(getValue))
         result.map(outputObject)
+      }
+    }
+  }
+}
+
+case class MapGroupsR(
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Broadcast[Object]],
+    inputSchema: StructType,
+    outputSchema: StructType,
+    deserializer: Expression,
+    serializer: Seq[NamedExpression],
+    groupingExprs: Seq[NamedExpression],
+    child: SparkPlan) extends UnaryNode with ObjectOperator {
+   
+  val groupingAttributes = groupingExprs.map(_.toAttribute)
+   
+   override def output: Seq[Attribute] = serializer.map(_.toAttribute)
+  //   override def output: Seq[Attribute] = groupingAttributes
+
+  override def requiredChildDistribution: Seq[Distribution] =
+    ClusteredDistribution(groupingAttributes) :: Nil
+
+  override def requiredChildOrdering: Seq[Seq[SortOrder]] =
+    Seq(groupingAttributes.map(SortOrder(_, Ascending)))
+
+  override protected def doExecute(): RDD[InternalRow] = {
+    println("hello from doExecute!")
+    
+    val rddInternalRows = child.execute()
+    val taskContext = TaskContext.get
+
+    val runner = new RRunner[Array[Byte]](
+     func, "row", "row", packageNames, broadcastVars, rddInternalRows.getNumPartitions)
+
+    println("Number of partitions: " + rddInternalRows.getNumPartitions)
+	
+      rddInternalRows.mapPartitionsWithIndex { (index, iter) =>
+      val grouped = GroupedIterator(iter, groupingAttributes, child.output)
+
+      // val getKey = generateToObject(keyDeserializer, groupingAttributes)
+      // val getValue = generateToObject(valueDeserializer, dataAttributes)
+      // val outputObject = generateToRow(serializer)
+
+      grouped.map { case (key, rowIter) =>
+	println("hello")
+	// println(key.toString)
+
+	//val rrd2 = sparkContext.parallelize(Array(1, 2, 3, 4, 5))
+        val result = runner.compute(rowIter, index, taskContext)
+        val xx = result.next
+	// print(xx.length)
+	// val resultRDD = result.map(element  => sparkContext.parallelize(element))        
+
+	//val converter = UnsafeProjection.create(Array[DataType](IntegerType))
+	//converter.apply(key)
+	rowIter.next
       }
     }
   }

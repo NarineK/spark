@@ -27,6 +27,7 @@ import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Pivot}
 import org.apache.spark.sql.catalyst.util.usePrettyExpression
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.NumericType
+import org.apache.spark.broadcast.Broadcast
 
 /**
  * A set of methods for aggregations on a [[DataFrame]], created by [[Dataset.groupBy]].
@@ -374,6 +375,20 @@ class RelationalGroupedDataset protected[sql](
   }
 }
 
+private[sql] def gapply(
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Broadcast[Object]],
+    schema: StructType): DataFrame = {
+
+    println("Hello from relationalgroup gapply!");
+    println(func.length);
+    val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
+    Dataset.ofRows(
+      sqlContext,
+      MapGroupsR(
+       func, packageNames, broadcastVars, schema, rowEncoder, groupingExprs.map(alias), df.logicalPlan)) 
+}
 
 /**
  * Companion object for GroupedData.

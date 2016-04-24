@@ -379,6 +379,8 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
         execution.AppendColumns(f, in, out, planLater(child)) :: Nil
       case logical.MapGroups(f, key, in, out, grouping, data, child) =>
         execution.MapGroups(f, key, in, out, grouping, data, planLater(child)) :: Nil
+      case logical.MapGroupsR(rfunc, key, in, out, grouping, data, child) =>
+        execution.MapGroupsR(rfunc, key, in, out, grouping, data, planLater(child)) :: Nil	
       case logical.CoGroup(f, keyObj, lObj, rObj, out, lGroup, rGroup, lAttr, rAttr, left, right) =>
         execution.CoGroup(
           f, keyObj, lObj, rObj, out, lGroup, rGroup, lAttr, rAttr,

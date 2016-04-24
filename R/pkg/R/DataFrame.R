@@ -1102,6 +1102,36 @@ setMethod("group_by",
             groupBy(x, ...)
           })
 
+#' Gapply
+#' 
+#' 
+setMethod("gapply", signature(x = "DataFrame", func = "function", schema = "structType"),
+          function(x, func, schema, ...) {
+            cols <- list(...)
+            packageNamesArr <- serialize(.sparkREnv[[".packages"]],
+                                         connection = NULL)
+            
+            broadcastArr <- lapply(ls(.broadcastNames),
+                                   function(name) { get(name, .broadcastNames) })
+            
+            if (length(cols) >= 1 && class(cols[[1]]) == "character") {
+              sdf <- callJMethod(x@sdf, "gapply", 
+                          x@sdf,
+                          serialize(cleanClosure(func), connection = NULL),
+                          packageNamesArr,
+                          broadcastArr,
+                          schema$jobj, cols[[1]], cols[-1])
+            } else {
+              jcol <- lapply(cols, function(c) { c@jc })
+              sdf <- callJMethod(x@sdf, "gapply",
+                                 serialize(cleanClosure(func), connection = NULL),
+                                 packageNamesArr,
+                                 broadcastArr,
+                                 schema$jobj, jcol)
+            }
+            dataFrame(sdf)
+})
+
 #' Summarize data across columns
 #'
 #' Compute aggregates by specifying a list of columns

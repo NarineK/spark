@@ -155,7 +155,9 @@ setMethod("getJRDD", signature(rdd = "PipelinedRDD"),
 
             broadcastArr <- lapply(ls(.broadcastNames),
                                    function(name) { get(name, .broadcastNames) })
-
+            
+            print("aaa ")
+            print(rdd@func)
             serializedFuncArr <- serialize(rdd@func, connection = NULL)
 
             prev_jrdd <- rdd@prev_jrdd

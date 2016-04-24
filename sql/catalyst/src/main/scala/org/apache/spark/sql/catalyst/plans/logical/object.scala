@@ -17,10 +17,14 @@
 
 package org.apache.spark.sql.catalyst.plans.logical
 
+import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.Encoder
 import org.apache.spark.sql.catalyst.encoders._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.types.{ObjectType, StructType}
+import org.apache.spark.sql.catalyst.analysis.UnresolvedDeserializer
+ 
 
 /**
  * A trait for logical operators that apply user defined functions to domain objects.
@@ -162,6 +166,42 @@ case class MapGroups(
 
   override def deserializers: Seq[(Expression, Seq[Attribute])] =
     Seq(keyDeserializer -> groupingAttributes, valueDeserializer -> dataAttributes)
+}
+
+/** Factory for constructing new `MapGroupsR` nodes. */
+object MapGroupsR {
+  def apply(
+       func: Array[Byte],
+       packageNames: Array[Byte],
+       broadcastVars: Array[Broadcast[Object]],
+       schema: StructType,
+       encoder: ExpressionEncoder[Row],
+       groupingExprs: Seq[NamedExpression],
+       child: LogicalPlan): MapGroupsR = {
+     MapGroupsR(
+       func,
+       packageNames,
+       broadcastVars,
+       encoder.schema,
+       schema,
+       UnresolvedDeserializer(encoder.deserializer),
+       RowEncoder(schema).namedExpressions,
+       groupingExprs,
+       child)
+  }
+}
+
+case class MapGroupsR(
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Broadcast[Object]],
+    inputSchema: StructType,
+    outputSchema: StructType,
+    deserializer: Expression,
+    serializer: Seq[NamedExpression],
+    groupingExprs: Seq[NamedExpression],
+    child: LogicalPlan) extends UnaryNode with ObjectOperator {
+  override lazy val schema = outputSchema
 }
 
 /** Factory for constructing new `CoGroup` nodes. */

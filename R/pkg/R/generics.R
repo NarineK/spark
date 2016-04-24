@@ -496,6 +496,10 @@ setGeneric("group_by", function(x, ...) { standardGeneric("group_by") })
 #' @export
 setGeneric("groupBy", function(x, ...) { standardGeneric("groupBy") })
 
+#' @rdname gapply
+#' @export
+setMethod("gapply", function(x, func, schema, ...) { standardGeneric("gapply") })
+
 #' @rdname insertInto
 #' @export
 setGeneric("insertInto", function(x, tableName, ...) { standardGeneric("insertInto") })
