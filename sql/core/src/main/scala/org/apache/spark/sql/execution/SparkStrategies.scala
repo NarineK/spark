@@ -357,25 +357,16 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
       case logical.MapElements(f, objAttr, child) =>
         execution.MapElementsExec(f, objAttr, planLater(child)) :: Nil
       case logical.AppendColumns(f, in, out, child) =>
-<<<<<<< HEAD
-        execution.AppendColumns(f, in, out, planLater(child)) :: Nil
-      case logical.MapGroups(f, key, in, out, grouping, data, child) =>
-        execution.MapGroups(f, key, in, out, grouping, data, planLater(child)) :: Nil
-      case logical.MapGroupsR(rfunc, key, in, out, grouping, data, child) =>
-        execution.MapGroupsR(rfunc, key, in, out, grouping, data, planLater(child)) :: Nil	
-      case logical.CoGroup(f, keyObj, lObj, rObj, out, lGroup, rGroup, lAttr, rAttr, left, right) =>
-        execution.CoGroup(
-          f, keyObj, lObj, rObj, out, lGroup, rGroup, lAttr, rAttr,
-=======
         execution.AppendColumnsExec(f, in, out, planLater(child)) :: Nil
       case logical.AppendColumnsWithObject(f, childSer, newSer, child) =>
         execution.AppendColumnsWithObjectExec(f, childSer, newSer, planLater(child)) :: Nil
       case logical.MapGroups(f, key, value, grouping, data, objAttr, child) =>
         execution.MapGroupsExec(f, key, value, grouping, data, objAttr, planLater(child)) :: Nil
+      case logical.MapGroupsR(f, p, b, is, os, in, out, grouping, objAttr, child) =>
+        execution.MapGroupsRExec(f, p, b, is, os, in, out, grouping, objAttr, planLater(child)) :: Nil
       case logical.CoGroup(f, key, lObj, rObj, lGroup, rGroup, lAttr, rAttr, oAttr, left, right) =>
         execution.CoGroupExec(
           f, key, lObj, rObj, lGroup, rGroup, lAttr, rAttr, oAttr,
->>>>>>> 902c15c5e6da55754501c2e56bd6379b9d5f1194
           planLater(left), planLater(right)) :: Nil
 
       case logical.Repartition(numPartitions, shuffle, child) =>

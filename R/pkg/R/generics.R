@@ -501,7 +501,7 @@ setGeneric("groupBy", function(x, ...) { standardGeneric("groupBy") })
 
 #' @rdname gapply
 #' @export
-setMethod("gapply", function(x, func, schema, ...) { standardGeneric("gapply") })
+setGeneric("gapply", function(x, func, schema, ...) { standardGeneric("gapply") })
 
 #' @rdname insertInto
 #' @export

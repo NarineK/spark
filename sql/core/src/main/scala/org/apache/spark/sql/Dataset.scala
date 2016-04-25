@@ -52,6 +52,7 @@ import org.apache.spark.sql.execution.streaming.{StreamingExecutionRelation, Str
 import org.apache.spark.sql.types._
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.Utils
+import org.apache.spark.sql.types.StructType
 
 private[sql] object Dataset {
   def apply[T: Encoder](sqlContext: SQLContext, logicalPlan: LogicalPlan): Dataset[T] = {
@@ -1145,14 +1146,16 @@ class Dataset[T] private[sql](
     RelationalGroupedDataset(toDF(), cols.map(_.expr), RelationalGroupedDataset.GroupByType)
   }
 
-  private[sql] def gapply(
+  def gapply(
     func: Array[Byte],
     packageNames: Array[Byte],
-    broadcastVars: Array[Broadcast[Object]],
+    broadcastVars: Array[Object],
     schema: StructType,
     cols: Column*): DataFrame = {
     val groups = RelationalGroupedDataset(toDF(), cols.map(_.expr), RelationalGroupedDataset.GroupByType)    
-    groups.gapply(func, packageNames, broadcastVars, schema)  
+    val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
+    val broadcastVarObj = broadcastVars.map(x => x.asInstanceOf[Broadcast[Object]])
+    groups.gapply(func, packageNames, broadcastVarObj, schema, rowEncoder)  
   }
 
   /**

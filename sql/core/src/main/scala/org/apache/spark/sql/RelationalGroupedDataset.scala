@@ -23,11 +23,13 @@ import scala.language.implicitConversions
 import org.apache.spark.sql.catalyst.analysis.{Star, UnresolvedAlias, UnresolvedAttribute, UnresolvedFunction}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
-import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Pivot}
+import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Pivot, MapGroupsR}
 import org.apache.spark.sql.catalyst.util.usePrettyExpression
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.NumericType
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.types.StructType
 
 /**
  * A set of methods for aggregations on a [[DataFrame]], created by [[Dataset.groupBy]].
@@ -209,11 +211,7 @@ class RelationalGroupedDataset protected[sql](
    */
   @scala.annotation.varargs
   def agg(expr: Column, exprs: Column*): DataFrame = {
-    toDF((expr +: exprs).map {
-      case typed: TypedColumn[_, _] =>
-        typed.withInputType(df.unresolvedTEncoder.deserializer, df.logicalPlan.output).expr
-      case c => c.expr
-    })
+    toDF((expr +: exprs).map(_.expr))
   }
 
   /**
@@ -377,21 +375,22 @@ class RelationalGroupedDataset protected[sql](
   def pivot(pivotColumn: String, values: java.util.List[Any]): RelationalGroupedDataset = {
     pivot(pivotColumn, values.asScala)
   }
-}
 
-private[sql] def gapply(
+  def gapply(
     func: Array[Byte],
     packageNames: Array[Byte],
     broadcastVars: Array[Broadcast[Object]],
-    schema: StructType): DataFrame = {
+    schema: StructType,
+    rowEncoder: ExpressionEncoder[Row]): DataFrame = {
 
     println("Hello from relationalgroup gapply!");
-    println(func.length);
-    val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
+    println(schema);
+    //val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
     Dataset.ofRows(
-      sqlContext,
+      df.sqlContext,
       MapGroupsR(
-       func, packageNames, broadcastVars, schema, rowEncoder, groupingExprs.map(alias), df.logicalPlan)) 
+       func, packageNames, broadcastVars, schema, rowEncoder, groupingExprs.map(alias), df.logicalPlan))
+  }
 }
 
 /**
@@ -427,7 +426,7 @@ private[sql] object RelationalGroupedDataset {
   private[sql] object RollupType extends GroupType
 
   /**
-   * To indicate it's the PIVOT
-   */
+    * To indicate it's the PIVOT
+    */
   private[sql] case class PivotType(pivotCol: Expression, values: Seq[Literal]) extends GroupType
 }

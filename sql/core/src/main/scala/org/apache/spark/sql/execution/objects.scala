@@ -25,14 +25,12 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.plans.physical._
-<<<<<<< HEAD
 import org.apache.spark.sql.types.ObjectType
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.types._
 import org.apache.spark.api.r._
 import org.apache.spark.TaskContext
-=======
-import org.apache.spark.sql.types.{DataType, ObjectType}
+import org.apache.spark.broadcast.Broadcast
 
 /**
  * Takes the input row from child and turns it into object using the given deserializer expression.
@@ -104,7 +102,6 @@ case class SerializeFromObjectExec(
     }
   }
 }
->>>>>>> 902c15c5e6da55754501c2e56bd6379b9d5f1194
 
 /**
  * Helper functions for physical operators that work with user defined objects.
@@ -316,7 +313,7 @@ case class MapGroupsExec(
   }
 }
 
-case class MapGroupsR(
+case class MapGroupsRExec(
     func: Array[Byte],
     packageNames: Array[Byte],
     broadcastVars: Array[Broadcast[Object]],
@@ -325,12 +322,17 @@ case class MapGroupsR(
     deserializer: Expression,
     serializer: Seq[NamedExpression],
     groupingExprs: Seq[NamedExpression],
-    child: SparkPlan) extends UnaryNode with ObjectOperator {
-   
+    outputObjAttr: Attribute,
+    child: SparkPlan) extends UnaryExecNode with ObjectOperator {
+
+  print("Hello MapGroupsRExec") 
+ 
   val groupingAttributes = groupingExprs.map(_.toAttribute)
-   
-   override def output: Seq[Attribute] = serializer.map(_.toAttribute)
-  //   override def output: Seq[Attribute] = groupingAttributes
+
+  //override def output: Seq[Attribute] = serializer.map(_.toAttribute)
+
+  override def output: Seq[Attribute] = outputObjAttr :: Nil
+  override def producedAttributes: AttributeSet = AttributeSet(outputObjAttr)
 
   override def requiredChildDistribution: Seq[Distribution] =
     ClusteredDistribution(groupingAttributes) :: Nil

@@ -23,11 +23,6 @@ import org.apache.spark.sql.Encoder
 import org.apache.spark.sql.catalyst.analysis.UnresolvedDeserializer
 import org.apache.spark.sql.catalyst.encoders._
 import org.apache.spark.sql.catalyst.expressions._
-<<<<<<< HEAD
-import org.apache.spark.sql.types.{ObjectType, StructType}
-import org.apache.spark.sql.catalyst.analysis.UnresolvedDeserializer
- 
-=======
 import org.apache.spark.sql.types.{DataType, StructType}
 
 object CatalystSerde {
@@ -36,15 +31,27 @@ object CatalystSerde {
     DeserializeToObject(deserializer, generateObjAttr[T], child)
   }
 
+  def deserialize(child: LogicalPlan, encoder: ExpressionEncoder[Row]): DeserializeToObject = {
+    val deserializer = UnresolvedDeserializer(encoder.deserializer)
+    DeserializeToObject(deserializer, generateObjAttrForRow(encoder), child)
+  }  
+
   def serialize[T : Encoder](child: LogicalPlan): SerializeFromObject = {
     SerializeFromObject(encoderFor[T].namedExpressions, child)
+  }
+
+  def serialize(child: LogicalPlan, encoder: ExpressionEncoder[Row]): SerializeFromObject = {
+    SerializeFromObject(encoder.namedExpressions, child)
   }
 
   def generateObjAttr[T : Encoder]: Attribute = {
     AttributeReference("obj", encoderFor[T].deserializer.dataType, nullable = false)()
   }
+ 
+  def generateObjAttrForRow(encoder: ExpressionEncoder[Row]): Attribute = {
+    AttributeReference("obj", encoder.deserializer.dataType, nullable = false)()
+  }
 }
->>>>>>> 902c15c5e6da55754501c2e56bd6379b9d5f1194
 
 /**
  * A trait for logical operators that produces domain objects as output.
@@ -223,8 +230,9 @@ object MapGroupsR {
        schema: StructType,
        encoder: ExpressionEncoder[Row],
        groupingExprs: Seq[NamedExpression],
-       child: LogicalPlan): MapGroupsR = {
-     MapGroupsR(
+       child: LogicalPlan): LogicalPlan = {
+     val deserialized = CatalystSerde.deserialize(child, encoder)
+     val mapped = MapGroupsR(
        func,
        packageNames,
        broadcastVars,
@@ -233,7 +241,9 @@ object MapGroupsR {
        UnresolvedDeserializer(encoder.deserializer),
        RowEncoder(schema).namedExpressions,
        groupingExprs,
-       child)
+       CatalystSerde.generateObjAttrForRow(RowEncoder(schema)),
+       deserialized)
+     CatalystSerde.serialize(mapped, RowEncoder(schema))	
   }
 }
 
@@ -246,8 +256,13 @@ case class MapGroupsR(
     deserializer: Expression,
     serializer: Seq[NamedExpression],
     groupingExprs: Seq[NamedExpression],
-    child: LogicalPlan) extends UnaryNode with ObjectOperator {
-  override lazy val schema = outputSchema
+    outputObjAttr: Attribute,
+    child: LogicalPlan) extends UnaryNode with ObjectConsumer with ObjectProducer{
+    
+    override lazy val schema = outputSchema 
+    print(serializer.getClass) 
+
+   //override def output: Seq[Attribute] = serializer.map(_.toAttribute)
 }
 
 /** Factory for constructing new `CoGroup` nodes. */

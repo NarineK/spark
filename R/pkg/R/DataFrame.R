@@ -21,6 +21,7 @@
 NULL
 
 setOldClass("jobj")
+setOldClass("structType")
 
 #' @title S4 class that represents a SparkDataFrame
 #' @description DataFrames can be created using functions like \link{createDataFrame},
@@ -1102,10 +1103,19 @@ setMethod("group_by",
             groupBy(x, ...)
           })
 
-#' Gapply
-#' 
-#' 
-setMethod("gapply", signature(x = "DataFrame", func = "function", schema = "structType"),
+#' @param x a SparkDataFrame
+#' @param func
+#' @param schema
+#' @return a SparkDataFrame
+#' @family SparkDataFrame functions
+#' @rdname gapply
+#' @name gapply
+#' @export
+#' @examples
+#' \dontrun{
+#' }
+setMethod("gapply", 
+          signature(x = "SparkDataFrame", func = "function", schema = "structType"),
           function(x, func, schema, ...) {
             cols <- list(...)
             packageNamesArr <- serialize(.sparkREnv[[".packages"]],
@@ -1116,13 +1126,15 @@ setMethod("gapply", signature(x = "DataFrame", func = "function", schema = "stru
             
             if (length(cols) >= 1 && class(cols[[1]]) == "character") {
               sdf <- callJMethod(x@sdf, "gapply", 
-                          x@sdf,
                           serialize(cleanClosure(func), connection = NULL),
                           packageNamesArr,
                           broadcastArr,
                           schema$jobj, cols[[1]], cols[-1])
             } else {
               jcol <- lapply(cols, function(c) { c@jc })
+              print(jcol)
+              print(packageNamesArr)
+              print(broadcastArr)
               sdf <- callJMethod(x@sdf, "gapply",
                                  serialize(cleanClosure(func), connection = NULL),
                                  packageNamesArr,
