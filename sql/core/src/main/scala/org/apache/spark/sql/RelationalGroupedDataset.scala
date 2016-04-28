@@ -376,21 +376,29 @@ class RelationalGroupedDataset protected[sql](
     pivot(pivotColumn, values.asScala)
   }
 
+/*
   def gapply(
     func: Array[Byte],
     packageNames: Array[Byte],
     broadcastVars: Array[Broadcast[Object]],
-    schema: StructType,
-    rowEncoder: ExpressionEncoder[Row]): DataFrame = {
+    schema: StructType): DataFrame = {
 
     println("Hello from relationalgroup gapply!");
     println(schema);
-    //val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
+    val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
+    val appendFunc = (row: (org.apache.spark.sql.Row)) => row(groupingExprs.map(alias))
+    val withGroupingKey = AppendColumnsWithObject(
+                        appendFunc.asInstanceOf[Any => Any],
+                        groupingExprs.map(alias),
+                        rowEncoder.namedExpressions,
+                        df.logicalPlan)
+    val executed = sqlContext.executePlan(withGroupingKey)
+
     Dataset.ofRows(
       df.sqlContext,
       MapGroupsR(
-       func, packageNames, broadcastVars, schema, rowEncoder, groupingExprs.map(alias), df.logicalPlan))
-  }
+       func, packageNames, broadcastVars, schema, rowEncoder, executed, withGroupingKey.newColumns))
+  }*/
 }
 
 /**

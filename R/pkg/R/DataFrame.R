@@ -1103,28 +1103,40 @@ setMethod("group_by",
             groupBy(x, ...)
           })
 
-#' @param x a SparkDataFrame
-#' @param func
-#' @param schema
-#' @return a SparkDataFrame
+#' gapply
+#'
+#' Apply a function to each group of a DataFrame.
+#'
+#' @param x A SparkDataFrame
+#' @param func A function to be applied to each group partition specified by grouping
+#'        columns of the SparkDataFrame.
+#'        The output of func is a data.frame.
+#' @param schema The schema of the resulting DataFrame after the function is applied.
+#'               It must match the output of func.
 #' @family SparkDataFrame functions
 #' @rdname gapply
 #' @name gapply
 #' @export
 #' @examples
 #' \dontrun{
+#'   df <- createDataFrame (sqlContext, iris)
+#'   gdf <- gapply(df, function(x) { x }, schema(df), "Petal_Width")
+#'   collect(gdf)
 #' }
 setMethod("gapply", 
           signature(x = "SparkDataFrame", func = "function", schema = "structType"),
           function(x, func, schema, ...) {
             cols <- list(...)
+            if (length(cols) == 0) {
+              stop("At least one grouping column must be specified")
+            }
             packageNamesArr <- serialize(.sparkREnv[[".packages"]],
                                          connection = NULL)
             
             broadcastArr <- lapply(ls(.broadcastNames),
                                    function(name) { get(name, .broadcastNames) })
             
-            if (length(cols) >= 1 && class(cols[[1]]) == "character") {
+            if (class(cols[[1]]) == "character") {
               sdf <- callJMethod(x@sdf, "gapply", 
                           serialize(cleanClosure(func), connection = NULL),
                           packageNamesArr,
@@ -1132,9 +1144,6 @@ setMethod("gapply",
                           schema$jobj, cols[[1]], cols[-1])
             } else {
               jcol <- lapply(cols, function(c) { c@jc })
-              print(jcol)
-              print(packageNamesArr)
-              print(broadcastArr)
               sdf <- callJMethod(x@sdf, "gapply",
                                  serialize(cleanClosure(func), connection = NULL),
                                  packageNamesArr,

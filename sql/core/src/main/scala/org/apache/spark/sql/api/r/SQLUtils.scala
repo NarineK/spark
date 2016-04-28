@@ -28,7 +28,7 @@ import org.apache.spark.sql.{DataFrame, Row, SaveMode, SQLContext}
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.types._
 
-private[r] object SQLUtils {
+private[sql] object SQLUtils {
   SerDe.registerSqlSerDe((readSqlObject, writeSqlObject))
 
   def createSQLContext(jsc: JavaSparkContext): SQLContext = {
@@ -111,7 +111,7 @@ private[r] object SQLUtils {
     }
   }
 
-  private[this] def bytesToRow(bytes: Array[Byte], schema: StructType): Row = {
+  private[sql] def bytesToRow(bytes: Array[Byte], schema: StructType): Row = {
     val bis = new ByteArrayInputStream(bytes)
     val dis = new DataInputStream(bis)
     val num = SerDe.readInt(dis)
@@ -120,7 +120,7 @@ private[r] object SQLUtils {
     }.toSeq)
   }
 
-  private[this] def rowToRBytes(row: Row): Array[Byte] = {
+  private[sql] def rowToRBytes(row: Row): Array[Byte] = {
     val bos = new ByteArrayOutputStream()
     val dos = new DataOutputStream(bos)
 

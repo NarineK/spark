@@ -19,6 +19,9 @@ package org.apache.spark.sql
 
 import java.io.CharArrayWriter
 
+import scala.reflect.ClassTag
+
+
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
 import scala.reflect.runtime.universe.TypeTag
@@ -53,6 +56,8 @@ import org.apache.spark.sql.types._
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.Utils
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 
 private[sql] object Dataset {
   def apply[T: Encoder](sqlContext: SQLContext, logicalPlan: LogicalPlan): Dataset[T] = {
@@ -1146,17 +1151,50 @@ class Dataset[T] private[sql](
     RelationalGroupedDataset(toDF(), cols.map(_.expr), RelationalGroupedDataset.GroupByType)
   }
 
+  /**
+   * Returns a new [[DataFrame]] which contains the aggregated result of applying [[func]] R function to each group 
+   *
+   * @group func
+   * @since 2.0.0
+   */
   def gapply(
     func: Array[Byte],
     packageNames: Array[Byte],
     broadcastVars: Array[Object],
-    schema: StructType,
-    cols: Column*): DataFrame = {
-    val groups = RelationalGroupedDataset(toDF(), cols.map(_.expr), RelationalGroupedDataset.GroupByType)    
-    val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
+    outputSchema: StructType,
+    col1: String, cols: String*): DataFrame = {
+
+    val inputPlan = logicalPlan
+
+    val colNames: Seq[String] = col1 +: cols
+    val gfunc = (r: Row) => convertKeysToRow(r, colNames)
+    val groups = select((col1 +: cols).map(Column(_)) : _*)
+    val keyEncoder = RowEncoder(groups.schema)
+    val dataEncoder = RowEncoder(schema)
+
+    val withGroupingKey = AppendColumnsWithRow(gfunc.asInstanceOf[Any => Any], 
+                         keyEncoder.namedExpressions, dataEncoder.namedExpressions, inputPlan)
+    val executed = sqlContext.executePlan(withGroupingKey)
+
+    print(keyEncoder.namedExpressions ++ dataEncoder.namedExpressions)
+    print("-----------")
+    print(inputPlan.output)
+
     val broadcastVarObj = broadcastVars.map(x => x.asInstanceOf[Broadcast[Object]])
-    groups.gapply(func, packageNames, broadcastVarObj, schema, rowEncoder)  
+    Dataset.ofRows(
+      sqlContext,
+      MapGroupsR(
+       func, packageNames, broadcastVarObj, outputSchema, dataEncoder, keyEncoder.deserializer, dataEncoder.deserializer, 
+       keyEncoder.namedExpressions.map(_.toAttribute), dataEncoder.namedExpressions.map(_.toAttribute), executed.analyzed)) 
+   }
+
+   def convertKeysToRow[T](row: Row, fieldNames: Seq[String]): Row = {
+      val colNames =  fieldNames.map { name => row.getAs[T](name)
+      }.toSeq
+      Row.fromSeq(colNames)
   }
+
+def f[T](v: T)(implicit ev: ClassTag[T]) = ev.toString
 
   /**
    * Create a multi-dimensional rollup for the current [[Dataset]] using the specified columns,
@@ -1270,6 +1308,9 @@ class Dataset[T] private[sql](
     val inputPlan = logicalPlan
     val withGroupingKey = AppendColumns(func, inputPlan)
     val executed = sqlContext.executePlan(withGroupingKey)
+    print(inputPlan.output)
+    print("-----------");
+    print(withGroupingKey.newColumns)
 
     new KeyValueGroupedDataset(
       encoderFor[K],

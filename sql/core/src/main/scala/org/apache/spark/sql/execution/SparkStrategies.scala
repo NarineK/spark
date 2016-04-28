@@ -358,12 +358,15 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
         execution.MapElementsExec(f, objAttr, planLater(child)) :: Nil
       case logical.AppendColumns(f, in, out, child) =>
         execution.AppendColumnsExec(f, in, out, planLater(child)) :: Nil
+      case logical.AppendColumnsWithRow(f, childSer, newSer, child) =>
+        execution.AppendColumnsWithObjectExec(f, childSer, newSer, planLater(child)) :: Nil
       case logical.AppendColumnsWithObject(f, childSer, newSer, child) =>
         execution.AppendColumnsWithObjectExec(f, childSer, newSer, planLater(child)) :: Nil
       case logical.MapGroups(f, key, value, grouping, data, objAttr, child) =>
         execution.MapGroupsExec(f, key, value, grouping, data, objAttr, planLater(child)) :: Nil
-      case logical.MapGroupsR(f, p, b, is, os, in, out, grouping, objAttr, child) =>
-        execution.MapGroupsRExec(f, p, b, is, os, in, out, grouping, objAttr, planLater(child)) :: Nil
+      case logical.MapGroupsR(f, p, b, is, os, key, value, grouping, data, objAttr, child) =>
+        execution.MapGroupsExec(
+           execution.r.MapGroupRWrapper(f, p, b, is, os), key, value, grouping, data, objAttr, planLater(child)) :: Nil
       case logical.CoGroup(f, key, lObj, rObj, lGroup, rGroup, lAttr, rAttr, oAttr, left, right) =>
         execution.CoGroupExec(
           f, key, lObj, rObj, lGroup, rGroup, lAttr, rAttr, oAttr,

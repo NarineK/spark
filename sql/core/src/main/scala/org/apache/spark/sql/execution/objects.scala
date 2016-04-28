@@ -313,21 +313,19 @@ case class MapGroupsExec(
   }
 }
 
+/*
 case class MapGroupsRExec(
     func: Array[Byte],
     packageNames: Array[Byte],
     broadcastVars: Array[Broadcast[Object]],
     inputSchema: StructType,
     outputSchema: StructType,
-    deserializer: Expression,
-    serializer: Seq[NamedExpression],
     groupingExprs: Seq[NamedExpression],
     outputObjAttr: Attribute,
     child: SparkPlan) extends UnaryExecNode with ObjectOperator {
 
-  print("Hello MapGroupsRExec") 
- 
   val groupingAttributes = groupingExprs.map(_.toAttribute)
+  print(groupingAttributes)  
 
   //override def output: Seq[Attribute] = serializer.map(_.toAttribute)
 
@@ -351,8 +349,9 @@ case class MapGroupsRExec(
 
     println("Number of partitions: " + rddInternalRows.getNumPartitions)
 	
-      rddInternalRows.mapPartitionsWithIndex { (index, iter) =>
-      val grouped = GroupedIterator(iter, groupingAttributes, child.output)
+    rddInternalRows.mapPartitionsInternal { iter =>
+      print("hello from rddInternalRows.mapPartitionsInternal") 
+      /*val grouped = GroupedIterator(iter, groupingAttributes, child.output)
 
       // val getKey = generateToObject(keyDeserializer, groupingAttributes)
       // val getValue = generateToObject(valueDeserializer, dataAttributes)
@@ -363,18 +362,22 @@ case class MapGroupsRExec(
 	// println(key.toString)
 
 	//val rrd2 = sparkContext.parallelize(Array(1, 2, 3, 4, 5))
-        val result = runner.compute(rowIter, index, taskContext)
-        val xx = result.next
+        //val result = runner.compute(rowIter, index, taskContext)
+        //val xx = result.next
 	// print(xx.length)
 	// val resultRDD = result.map(element  => sparkContext.parallelize(element))        
 
 	//val converter = UnsafeProjection.create(Array[DataType](IntegerType))
 	//converter.apply(key)
 	rowIter.next
-      }
+      } */
+       val values = Seq(1, 2, "3", "IV", 6L)
+       val internalRow = InternalRow.fromSeq(values)
+       Iterator(internalRow)
     }
   }
 }
+*/
 
 /**
  * Co-groups the data from left and right children, and calls the function with each group and 2
