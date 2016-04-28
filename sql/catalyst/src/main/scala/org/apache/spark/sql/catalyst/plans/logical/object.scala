@@ -28,7 +28,7 @@ import org.apache.spark.sql.types.{DataType, StructType}
 object CatalystSerde {
   def deserialize[T : Encoder](child: LogicalPlan): DeserializeToObject = {
     val deserializer = UnresolvedDeserializer(encoderFor[T].deserializer)
- DeserializeToObject(deserializer, generateObjAttr[T], child)
+    DeserializeToObject(deserializer, generateObjAttr[T], child)
   }
 
   def deserialize(child: LogicalPlan, encoder: ExpressionEncoder[Row]): DeserializeToObject = {
