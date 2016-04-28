@@ -1302,9 +1302,6 @@ class Dataset[T] private[sql](
     val inputPlan = logicalPlan
     val withGroupingKey = AppendColumns(func, inputPlan)
     val executed = sqlContext.executePlan(withGroupingKey)
-    print(inputPlan.output)
-    print("-----------");
-    print(withGroupingKey.newColumns)
 
     new KeyValueGroupedDataset(
       encoderFor[K],
