@@ -1172,13 +1172,9 @@ class Dataset[T] private[sql](
     val keyEncoder = RowEncoder(groups.schema)
     val dataEncoder = RowEncoder(schema)
 
-    val withGroupingKey = AppendColumnsWithRow(gfunc.asInstanceOf[Any => Any], 
+    val withGroupingKey = AppendColumnsWithObject(gfunc.asInstanceOf[Any => Any], 
                          keyEncoder.namedExpressions, dataEncoder.namedExpressions, inputPlan)
     val executed = sqlContext.executePlan(withGroupingKey)
-
-    print(keyEncoder.namedExpressions ++ dataEncoder.namedExpressions)
-    print("-----------")
-    print(inputPlan.output)
 
     val broadcastVarObj = broadcastVars.map(x => x.asInstanceOf[Broadcast[Object]])
     Dataset.ofRows(
@@ -1193,8 +1189,6 @@ class Dataset[T] private[sql](
       }.toSeq
       Row.fromSeq(colNames)
   }
-
-def f[T](v: T)(implicit ev: ClassTag[T]) = ev.toString
 
   /**
    * Create a multi-dimensional rollup for the current [[Dataset]] using the specified columns,

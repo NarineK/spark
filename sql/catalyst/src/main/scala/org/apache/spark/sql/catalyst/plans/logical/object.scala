@@ -28,7 +28,7 @@ import org.apache.spark.sql.types.{DataType, StructType}
 object CatalystSerde {
   def deserialize[T : Encoder](child: LogicalPlan): DeserializeToObject = {
     val deserializer = UnresolvedDeserializer(encoderFor[T].deserializer)
-    DeserializeToObject(deserializer, generateObjAttr[T], child)
+ DeserializeToObject(deserializer, generateObjAttr[T], child)
   }
 
   def deserialize(child: LogicalPlan, encoder: ExpressionEncoder[Row]): DeserializeToObject = {
@@ -229,7 +229,10 @@ object MapGroupsR {
        broadcastVars: Array[Broadcast[Object]],
        schema: StructType,
        encoder: ExpressionEncoder[Row],
-       groupingExprs: Seq[NamedExpression],
+       keyDeserializer: Expression,
+       valueDeserializer: Expression,
+       groupingAttributes: Seq[Attribute],
+       dataAttributes: Seq[Attribute],
        child: LogicalPlan): LogicalPlan = {
      val deserialized = CatalystSerde.deserialize(child, encoder)
      val mapped = MapGroupsR(
@@ -238,9 +241,10 @@ object MapGroupsR {
        broadcastVars,
        encoder.schema,
        schema,
-       UnresolvedDeserializer(encoder.deserializer),
-       RowEncoder(schema).namedExpressions,
-       groupingExprs,
+       keyDeserializer,
+       valueDeserializer,
+       groupingAttributes,
+       dataAttributes,
        CatalystSerde.generateObjAttrForRow(RowEncoder(schema)),
        deserialized)
      CatalystSerde.serialize(mapped, RowEncoder(schema))	
@@ -253,16 +257,14 @@ case class MapGroupsR(
     broadcastVars: Array[Broadcast[Object]],
     inputSchema: StructType,
     outputSchema: StructType,
-    deserializer: Expression,
-    serializer: Seq[NamedExpression],
-    groupingExprs: Seq[NamedExpression],
+    keyDeserializer: Expression,
+    valueDeserializer: Expression,
+    groupingAttributes: Seq[Attribute],
+    dataAttributes: Seq[Attribute],
     outputObjAttr: Attribute,
     child: LogicalPlan) extends UnaryNode with ObjectConsumer with ObjectProducer{
     
     override lazy val schema = outputSchema 
-    print(serializer.getClass) 
-
-   //override def output: Seq[Attribute] = serializer.map(_.toAttribute)
 }
 
 /** Factory for constructing new `CoGroup` nodes. */
