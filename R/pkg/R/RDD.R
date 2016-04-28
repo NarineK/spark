@@ -155,7 +155,7 @@ setMethod("getJRDD", signature(rdd = "PipelinedRDD"),
 
             broadcastArr <- lapply(ls(.broadcastNames),
                                    function(name) { get(name, .broadcastNames) })
-            
+
             serializedFuncArr <- serialize(rdd@func, connection = NULL)
 
             prev_jrdd <- rdd@prev_jrdd
@@ -1715,6 +1715,7 @@ setMethod("zipPartitions",
 
             rrdds <- lapply(rrdds, function(rdd) {
               mapPartitionsWithIndex(rdd, function(partIndex, part) {
+                print(length(part))
                 list(list(partIndex, part))
               })
             })
