@@ -23,7 +23,6 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.api.r.SQLUtils._
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.{BinaryType, StructField, StructType}
-import org.apache.spark.TaskContext
 
 /**
  * A function wrapper that applies the given R function to each partition of each group.
@@ -38,18 +37,35 @@ private[sql] case class MapGroupRWrapper(
 
   def apply(key: Any, iter: Iterator[Any]): TraversableOnce[Any] = {
     // Assume it is not serialized R data schema
-    // TODO add isSerializedRData and colnames similar to dapply
-    val (newIter, deserializer, cols) =
+
+    val isSerializedRData =
+      if (inputSchema == SERIALIZED_R_DATA_SCHEMA) true else false
+
+    val (newIter, deserializer, colNames) =
+      if (!isSerializedRData) {
+        // Serialize each row into an byte array that can be deserialized in the R worker
         (iter.asInstanceOf[Iterator[Row]].map {row => rowToRBytes(row)},
          SerializationFormats.ROW, inputSchema.fieldNames)
+      } else {
+        (iter.asInstanceOf[Iterator[Row]].map { row => row(0) }, SerializationFormats.BYTE, null)
+      }
 
-    // TODO add isSerializedRData similar to dapply
-    val serializer = SerializationFormats.ROW
+    val serializer = if (outputSchema != SERIALIZED_R_DATA_SCHEMA) {
+      SerializationFormats.ROW
+    } else {
+      SerializationFormats.BYTE
+    }
 
-    val rrunner = new RRunner[Array[Byte]](
-      func, deserializer, serializer, packageNames, broadcastVars)
-    // TODO use the method provided by sun-rui which doesn't require TaskContext
-    val outputIter = rrunner.compute(newIter, -1, TaskContext.get)
-    outputIter.map { bytes => Iterator(bytesToRow(bytes, outputSchema)) }
+    val runner = new RRunner[Array[Byte]](
+      func, deserializer, serializer, packageNames, broadcastVars,
+      isDataFrame = true, colNames = colNames)
+    // Partition index is ignored. Dataset has no support for mapPartitionsWithIndex.
+    val outputIter = runner.compute(newIter, -1)
+
+    if (serializer == SerializationFormats.ROW) {
+      outputIter.map { bytes => bytesToRow(bytes, outputSchema) }
+    } else {
+      outputIter.map { bytes => Row.fromSeq(Seq(bytes)) }
+    }
   }
 }

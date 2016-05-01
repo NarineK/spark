@@ -1137,14 +1137,14 @@ setMethod("gapply",
                                    function(name) { get(name, .broadcastNames) })
             
             if (class(cols[[1]]) == "character") {
-              sdf <- callJMethod(x@sdf, "gapply", 
+              sdf <- callJStatic("org.apache.spark.sql.api.r.SQLUtils", "gapply", x@sdf,
                           serialize(cleanClosure(func), connection = NULL),
                           packageNamesArr,
                           broadcastArr,
                           schema$jobj, cols[[1]], cols[-1])
             } else {
               jcol <- lapply(cols, function(c) { c@jc })
-              sdf <- callJMethod(x@sdf, "gapply",
+              sdf <- callJStatic("org.apache.spark.sql.api.r.SQLUtils", "gapply", x@sdf,
                                  serialize(cleanClosure(func), connection = NULL),
                                  packageNamesArr,
                                  broadcastArr,

@@ -20,17 +20,16 @@ package org.apache.spark.sql.execution
 import scala.language.existentials
 
 import org.apache.spark.api.java.function.MapFunction
+import org.apache.spark.api.r._
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen._
-import org.apache.spark.sql.catalyst.plans.physical._
-import org.apache.spark.sql.types.ObjectType
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
+import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.types._
-import org.apache.spark.api.r._
 import org.apache.spark.TaskContext
-import org.apache.spark.broadcast.Broadcast
 
 /**
  * Takes the input row from child and turns it into object using the given deserializer expression.
@@ -259,6 +258,7 @@ case class AppendColumnsWithObjectExec(
 
   override protected def doExecute(): RDD[InternalRow] = {
     child.execute().mapPartitionsInternal { iter =>
+      print("Hello from AppendColumnsWithObjectExec")
       val getChildObject = unwrapObjectFromRow(child.output.head.dataType)
       val outputChildObject = serializeObjectToRow(inputSerializer)
       val outputNewColumnOjb = serializeObjectToRow(newColumnsSerializer)
@@ -296,7 +296,9 @@ case class MapGroupsExec(
     Seq(groupingAttributes.map(SortOrder(_, Ascending)))
 
   override protected def doExecute(): RDD[InternalRow] = {
+    print("Hello from MapGroupsExec doExecute!")
     child.execute().mapPartitionsInternal { iter =>
+      print("Inside iterator")
       val grouped = GroupedIterator(iter, groupingAttributes, child.output)
 
       val getKey = deserializeRowToObject(keyDeserializer, groupingAttributes)
@@ -307,6 +309,7 @@ case class MapGroupsExec(
         val result = func(
           getKey(key),
           rowIter.map(getValue))
+        print(result)
         result.map(outputObject)
       }
     }

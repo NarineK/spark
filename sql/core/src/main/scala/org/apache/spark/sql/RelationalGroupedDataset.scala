@@ -23,12 +23,11 @@ import scala.language.implicitConversions
 import org.apache.spark.sql.catalyst.analysis.{Star, UnresolvedAlias, UnresolvedAttribute, UnresolvedFunction}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
-import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Pivot, MapGroupsR}
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, Pivot}
 import org.apache.spark.sql.catalyst.util.usePrettyExpression
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.NumericType
-import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.types.StructType
 
 /**
@@ -375,30 +374,6 @@ class RelationalGroupedDataset protected[sql](
   def pivot(pivotColumn: String, values: java.util.List[Any]): RelationalGroupedDataset = {
     pivot(pivotColumn, values.asScala)
   }
-
-/*
-  def gapply(
-    func: Array[Byte],
-    packageNames: Array[Byte],
-    broadcastVars: Array[Broadcast[Object]],
-    schema: StructType): DataFrame = {
-
-    println("Hello from relationalgroup gapply!");
-    println(schema);
-    val rowEncoder = encoder.asInstanceOf[ExpressionEncoder[Row]]
-    val appendFunc = (row: (org.apache.spark.sql.Row)) => row(groupingExprs.map(alias))
-    val withGroupingKey = AppendColumnsWithObject(
-                        appendFunc.asInstanceOf[Any => Any],
-                        groupingExprs.map(alias),
-                        rowEncoder.namedExpressions,
-                        df.logicalPlan)
-    val executed = sqlContext.executePlan(withGroupingKey)
-
-    Dataset.ofRows(
-      df.sqlContext,
-      MapGroupsR(
-       func, packageNames, broadcastVars, schema, rowEncoder, executed, withGroupingKey.newColumns))
-  }*/
 }
 
 /**
@@ -434,7 +409,7 @@ private[sql] object RelationalGroupedDataset {
   private[sql] object RollupType extends GroupType
 
   /**
-    * To indicate it's the PIVOT
-    */
+   * To indicate it's the PIVOT
+   */
   private[sql] case class PivotType(pivotCol: Expression, values: Seq[Literal]) extends GroupType
 }

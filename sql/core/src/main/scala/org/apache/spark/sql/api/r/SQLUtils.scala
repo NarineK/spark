@@ -29,6 +29,7 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.types._
 
 private[sql] object SQLUtils {
+
   SerDe.registerSqlSerDe((readSqlObject, writeSqlObject))
 
   def createSQLContext(jsc: JavaSparkContext): SQLContext = {
@@ -190,4 +191,32 @@ private[sql] object SQLUtils {
         false
     }
   }
+
+ val SERIALIZED_R_DATA_SCHEMA = StructType(Seq(StructField("R", BinaryType)))
+
+def gapply( 
+    df: DataFrame,
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Object],
+    outputSchema: StructType,
+    col: String, cols: String*): DataFrame = {
+
+    import df.sqlContext.implicits._
+    
+    val dfSchema = df.select(df(col)).schema
+    if (dfSchema.length ==0) throw new IllegalArgumentException(s"Invaid column name $col")
+    val dataType = dfSchema(0).dataType
+    dataType match {
+      case ByteType => df.gapply((r: Row) => r.getAs[Byte](col), func, packageNames, broadcastVars, outputSchema)
+      case IntegerType => df.gapply((r: Row) => r.getAs[Int](col), func, packageNames, broadcastVars, outputSchema)
+      case FloatType => df.gapply((r: Row) => r.getAs[Float](col), func, packageNames, broadcastVars, outputSchema)
+      case DoubleType => df.gapply((r: Row) => r.getAs[Double](col), func, packageNames, broadcastVars, outputSchema)
+      case StringType => df.gapply((r: Row) => r.getAs[String](col), func, packageNames, broadcastVars, outputSchema)
+      case BinaryType => df.gapply((r: Row) => r.getAs[Array[Byte]](col), func, packageNames, broadcastVars, outputSchema)
+      case BooleanType => df.gapply((r: Row) => r.getAs[Boolean](col), func, packageNames, broadcastVars, outputSchema)
+      case TimestampType => df.gapply((r: Row) => r.getAs[Long](col), func, packageNames, broadcastVars, outputSchema)
+      case _ => throw new IllegalArgumentException(s"Invaid type $dataType")
+     }
+   }
 }

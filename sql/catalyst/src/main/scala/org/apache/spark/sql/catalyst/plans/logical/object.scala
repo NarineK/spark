@@ -18,6 +18,7 @@
 package org.apache.spark.sql.catalyst.plans.logical
 
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.sql.Encoder
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.Encoder
 import org.apache.spark.sql.catalyst.analysis.UnresolvedDeserializer
@@ -34,7 +35,7 @@ object CatalystSerde {
   def deserialize(child: LogicalPlan, encoder: ExpressionEncoder[Row]): DeserializeToObject = {
     val deserializer = UnresolvedDeserializer(encoder.deserializer)
     DeserializeToObject(deserializer, generateObjAttrForRow(encoder), child)
-  }  
+  } 
 
   def serialize[T : Encoder](child: LogicalPlan): SerializeFromObject = {
     SerializeFromObject(encoderFor[T].namedExpressions, child)
@@ -47,7 +48,7 @@ object CatalystSerde {
   def generateObjAttr[T : Encoder]: Attribute = {
     AttributeReference("obj", encoderFor[T].deserializer.dataType, nullable = false)()
   }
- 
+
   def generateObjAttrForRow(encoder: ExpressionEncoder[Row]): Attribute = {
     AttributeReference("obj", encoder.deserializer.dataType, nullable = false)()
   }
@@ -73,7 +74,7 @@ trait ObjectProducer extends LogicalPlan {
  * The output of its child must be a single-field row containing the input object.
  */
 trait ObjectConsumer extends UnaryNode {
-  assert(child.output.length == 1)
+   assert(child.output.length == 1)
 
   // This operator always need all columns of its child, even it doesn't reference to.
   override def references: AttributeSet = child.outputSet
@@ -155,6 +156,32 @@ object AppendColumns {
   }
 }
 
+object AppendColumnsWithRow {
+   def apply[T : Encoder](
+       func: Any => Any,
+       childEncoder: T,
+       encoder: Seq[NamedExpression],
+       child: LogicalPlan): AppendColumnsWithRow = {
+     new AppendColumnsWithRow(
+       func,
+       UnresolvedDeserializer(encoderFor[T].deserializer),
+       encoder,
+       child)
+   }
+}
+
+case class AppendColumnsWithRow(
+    func: Any => Any,
+    deserializer: Expression,
+    serializer: Seq[NamedExpression],
+    child: LogicalPlan) extends UnaryNode {
+
+  override def output: Seq[Attribute] = child.output ++ newColumns
+
+  def newColumns: Seq[Attribute] = serializer.map(_.toAttribute)
+}
+
+
 /**
  * A relation produced by applying `func` to each element of the `child`, concatenating the
  * resulting columns at the end of the input row.
@@ -228,26 +255,30 @@ object MapGroupsR {
        packageNames: Array[Byte],
        broadcastVars: Array[Broadcast[Object]],
        schema: StructType,
-       encoder: ExpressionEncoder[Row],
-       keyDeserializer: Expression,
-       valueDeserializer: Expression,
+       encoder: Expression,
+       keyEncoder: Expression,
+       rowEncoder: ExpressionEncoder[Row],
        groupingAttributes: Seq[Attribute],
        dataAttributes: Seq[Attribute],
        child: LogicalPlan): LogicalPlan = {
-     val deserialized = CatalystSerde.deserialize(child, encoder)
+
+     print("Hello from MapGroupsR")
+     // val deserialized = CatalystSerde.deserialize(child, rowEncoder)
+     print(child)
+
      val mapped = MapGroupsR(
        func,
        packageNames,
        broadcastVars,
-       encoder.schema,
+       rowEncoder.schema,
        schema,
-       keyDeserializer,
-       valueDeserializer,
+       UnresolvedDeserializer(keyEncoder, groupingAttributes),
+       UnresolvedDeserializer(encoder, dataAttributes),
        groupingAttributes,
        dataAttributes,
        CatalystSerde.generateObjAttrForRow(RowEncoder(schema)),
-       deserialized)
-     CatalystSerde.serialize(mapped, RowEncoder(schema))	
+       child)
+     CatalystSerde.serialize(mapped, RowEncoder(schema))
   }
 }
 
@@ -262,9 +293,9 @@ case class MapGroupsR(
     groupingAttributes: Seq[Attribute],
     dataAttributes: Seq[Attribute],
     outputObjAttr: Attribute,
-    child: LogicalPlan) extends UnaryNode with ObjectConsumer with ObjectProducer{
-    
-    override lazy val schema = outputSchema 
+    child: LogicalPlan) extends UnaryNode with ObjectProducer{
+ 
+    override lazy val schema = outputSchema
 }
 
 /** Factory for constructing new `CoGroup` nodes. */

@@ -19,9 +19,6 @@ package org.apache.spark.sql
 
 import java.io.CharArrayWriter
 
-import scala.reflect.ClassTag
-
-
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
 import scala.reflect.runtime.universe.TypeTag
@@ -29,13 +26,12 @@ import scala.util.control.NonFatal
 
 import com.fasterxml.jackson.core.JsonFactory
 import org.apache.commons.lang3.StringUtils
-import org.apache.spark.broadcast.Broadcast
-
 
 import org.apache.spark.annotation.{DeveloperApi, Experimental}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.api.java.function._
 import org.apache.spark.api.python.PythonRDD
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst._
 import org.apache.spark.sql.catalyst.analysis._
@@ -51,13 +47,9 @@ import org.apache.spark.sql.execution.command.ExplainCommand
 import org.apache.spark.sql.execution.datasources.{CreateTableUsingAsSelect, LogicalRelation}
 import org.apache.spark.sql.execution.datasources.json.JacksonGenerator
 import org.apache.spark.sql.execution.python.EvaluatePython
-import org.apache.spark.sql.execution.streaming.{StreamingExecutionRelation, StreamingRelation}
 import org.apache.spark.sql.types._
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.Utils
-import org.apache.spark.sql.types.StructType
-import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 
 private[sql] object Dataset {
   def apply[T: Encoder](sqlContext: SQLContext, logicalPlan: LogicalPlan): Dataset[T] = {
@@ -1152,40 +1144,46 @@ class Dataset[T] private[sql](
   }
 
   /**
-   * Returns a new [[DataFrame]] which contains the aggregated result of applying [[func]] R function to each group 
+   * Returns a new [[DataFrame]] which contains the aggregated result of applying
+   * [[func]] R function to each group
    *
    * @group func
    * @since 2.0.0
    */
-  def gapply(
+  def gapply[K: Encoder](
+    gfunc: T => K,
     func: Array[Byte],
     packageNames: Array[Byte],
     broadcastVars: Array[Object],
-    outputSchema: StructType,
-    col1: String, cols: String*): DataFrame = {
+    outputSchema: StructType): DataFrame = {
 
     val inputPlan = logicalPlan
-
-    val colNames: Seq[String] = col1 +: cols
-    val gfunc = (r: Row) => convertKeysToRow(r, colNames)
-    val groups = select((col1 +: cols).map(Column(_)) : _*)
-    val keyEncoder = RowEncoder(groups.schema)
-    val dataEncoder = RowEncoder(schema)
-
-    val withGroupingKey = AppendColumnsWithObject(gfunc.asInstanceOf[Any => Any], 
-                         keyEncoder.namedExpressions, dataEncoder.namedExpressions, inputPlan)
+    val withGroupingKey = AppendColumns(gfunc, inputPlan)
     val executed = sqlContext.executePlan(withGroupingKey)
+ 
+    val kvdg = new KeyValueGroupedDataset(
+      encoderFor[K],
+      encoderFor[T],
+      executed,
+      inputPlan.output,
+      withGroupingKey.newColumns)
+   
+    print(kvdg.keys)
 
-    val broadcastVarObj = broadcastVars.map(x => x.asInstanceOf[Broadcast[Object]])
-    Dataset.ofRows(
-      sqlContext,
+    kvdg.flatMapRGroups(func, packageNames, broadcastVars, outputSchema, encoderFor[T].deserializer, encoderFor[K].deserializer)
+   
+   /* Dataset.ofRows(
+      executed.sqlContext,
       MapGroupsR(
-       func, packageNames, broadcastVarObj, outputSchema, dataEncoder, keyEncoder.deserializer, dataEncoder.deserializer, 
-       keyEncoder.namedExpressions.map(_.toAttribute), dataEncoder.namedExpressions.map(_.toAttribute), executed.analyzed)) 
+       func, packageNames, broadcastVarObj, outputSchema, dataEncoder, keyEncoder,
+       keyEncoder.namedExpressions.map(_.toAttribute), 
+       dataEncoder.namedExpressions.map(_.toAttribute), inputPlan)) */
+     // Dataset.ofRows(
+     // executed.sqlContext, executed.analyzed)
    }
 
    def convertKeysToRow[T](row: Row, fieldNames: Seq[String]): Row = {
-      val colNames =  fieldNames.map { name => row.getAs[T](name)
+      val colNames = fieldNames.map { name => row.getAs[T](name)
       }.toSeq
       Row.fromSeq(colNames)
   }
@@ -1310,6 +1308,21 @@ class Dataset[T] private[sql](
       inputPlan.output,
       withGroupingKey.newColumns)
   }
+
+  def groupByKey2[U: Encoder](func: T => U): DataFrame = { // KeyValueGroupedDataset[K, T] = {
+    val inputPlan = logicalPlan
+    val withGroupingKey = AppendColumns(func, inputPlan)
+    val executed = sqlContext.executePlan(withGroupingKey)
+
+    /* new KeyValueGroupedDataset(
+      encoderFor[T],
+      encoderFor[T],
+      executed,
+      inputPlan.output,
+      withGroupingKey.newColumns) */
+      Dataset.ofRows(
+          executed.sqlContext, executed.analyzed)
+  } 
 
   /**
    * :: Experimental ::

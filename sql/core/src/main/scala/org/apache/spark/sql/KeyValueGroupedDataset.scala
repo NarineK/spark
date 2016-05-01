@@ -25,6 +25,10 @@ import org.apache.spark.sql.catalyst.encoders.{encoderFor, ExpressionEncoder, Ou
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CreateStruct}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.QueryExecution
+import org.apache.spark.sql.types.StructType
+import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.sql.catalyst.analysis.UnresolvedDeserializer
+import org.apache.spark.sql.catalyst.expressions._
 
 /**
  * :: Experimental ::
@@ -133,25 +137,36 @@ class KeyValueGroupedDataset[K, V] private[sql](
   def flatMapGroups[U](f: FlatMapGroupsFunction[K, V, U], encoder: Encoder[U]): Dataset[U] = {
     flatMapGroups((key, data) => f.call(key, data.asJava).asScala)(encoder)
   }
-/*
-  def flatMapRGroups(rfunc: Array[Byte]): Dataset[V] = {
-    println("Hello from flatMapRGroups!"); 	 
-    println(rfunc.length);
+
+  def flatMapRGroups(
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Object],
+    outputSchema: StructType,
+    vDeserializer: Expression,
+    kDeserializer: Expression): DataFrame = {
+
+    println("Hello from flatMapRGroups!");
+    println(func.length);
 
     for (attr <- dataAttributes) { println(attr.toString) }
+    val broadcastVarObj = broadcastVars.map(x => x.asInstanceOf[Broadcast[Object]])
+    val rowEncoder = vEncoder.asInstanceOf[ExpressionEncoder[Row]]
 
-    Dataset(
+    Dataset.ofRows(
       sqlContext,
       MapGroupsR(
-        rfunc,
-	unresolvedKEncoder.deserializer,
-	unresolvedVEncoder.deserializer,
-	unresolvedVEncoder.namedExpressions,
+        func,
+        packageNames,
+        broadcastVarObj,
+        outputSchema,
+        unresolvedVEncoder.deserializer,
+        unresolvedKEncoder.deserializer,
+        rowEncoder,
         groupingAttributes,
         dataAttributes,
         logicalPlan))
   }
-*/
 
   /**
    * Applies the given function to each group of data.  For each unique group, the function will
