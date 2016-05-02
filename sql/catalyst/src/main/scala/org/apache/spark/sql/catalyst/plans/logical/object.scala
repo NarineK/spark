@@ -18,13 +18,11 @@
 package org.apache.spark.sql.catalyst.plans.logical
 
 import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.sql.Encoder
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.Encoder
+import org.apache.spark.sql.{Encoder, Row}
 import org.apache.spark.sql.catalyst.analysis.UnresolvedDeserializer
 import org.apache.spark.sql.catalyst.encoders._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.types.{DataType, StructType}
+import org.apache.spark.sql.types._
 
 object CatalystSerde {
   def deserialize[T : Encoder](child: LogicalPlan): DeserializeToObject = {
@@ -35,7 +33,7 @@ object CatalystSerde {
   def deserialize(child: LogicalPlan, encoder: ExpressionEncoder[Row]): DeserializeToObject = {
     val deserializer = UnresolvedDeserializer(encoder.deserializer)
     DeserializeToObject(deserializer, generateObjAttrForRow(encoder), child)
-  } 
+  }
 
   def serialize[T : Encoder](child: LogicalPlan): SerializeFromObject = {
     SerializeFromObject(encoderFor[T].namedExpressions, child)
@@ -122,6 +120,42 @@ case class MapPartitions(
     outputObjAttr: Attribute,
     child: LogicalPlan) extends UnaryNode with ObjectConsumer with ObjectProducer
 
+object MapPartitionsInR {
+  def apply(
+      func: Array[Byte],
+      packageNames: Array[Byte],
+      broadcastVars: Array[Broadcast[Object]],
+      schema: StructType,
+      encoder: ExpressionEncoder[Row],
+      child: LogicalPlan): LogicalPlan = {
+    val deserialized = CatalystSerde.deserialize(child, encoder)
+    val mapped = MapPartitionsInR(
+      func,
+      packageNames,
+      broadcastVars,
+      encoder.schema,
+      schema,
+      CatalystSerde.generateObjAttrForRow(RowEncoder(schema)),
+      deserialized)
+    CatalystSerde.serialize(mapped, RowEncoder(schema))
+  }
+}
+
+/**
+ * A relation produced by applying a serialized R function `func` to each partition of the `child`.
+ *
+ */
+case class MapPartitionsInR(
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Broadcast[Object]],
+    inputSchema: StructType,
+    outputSchema: StructType,
+    outputObjAttr: Attribute,
+    child: LogicalPlan) extends UnaryNode with ObjectConsumer with ObjectProducer {
+  override lazy val schema = outputSchema
+}
+
 object MapElements {
   def apply[T : Encoder, U : Encoder](
       func: AnyRef,
@@ -155,32 +189,6 @@ object AppendColumns {
       child)
   }
 }
-
-object AppendColumnsWithRow {
-   def apply[T : Encoder](
-       func: Any => Any,
-       childEncoder: T,
-       encoder: Seq[NamedExpression],
-       child: LogicalPlan): AppendColumnsWithRow = {
-     new AppendColumnsWithRow(
-       func,
-       UnresolvedDeserializer(encoderFor[T].deserializer),
-       encoder,
-       child)
-   }
-}
-
-case class AppendColumnsWithRow(
-    func: Any => Any,
-    deserializer: Expression,
-    serializer: Seq[NamedExpression],
-    child: LogicalPlan) extends UnaryNode {
-
-  override def output: Seq[Attribute] = child.output ++ newColumns
-
-  def newColumns: Seq[Attribute] = serializer.map(_.toAttribute)
-}
-
 
 /**
  * A relation produced by applying `func` to each element of the `child`, concatenating the

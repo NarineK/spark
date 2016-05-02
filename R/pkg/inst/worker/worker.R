@@ -88,7 +88,7 @@ isDataFrame <- as.logical(SparkR:::readInt(inputCon))
 
 # If isDataFrame, then read column names
 if (isDataFrame) {
-   colNames <- SparkR:::readObject(inputCon)
+  colNames <- SparkR:::readObject(inputCon)
 }
 
 isEmpty <- SparkR:::readInt(inputCon)
@@ -116,7 +116,7 @@ if (isEmpty != 0) {
         options(stringsAsFactors = FALSE)
         data <- do.call(rbind.data.frame, data)
         options(stringsAsFactors = oldOpt)
-        
+
         names(data) <- colNames
       } else {
         # Check to see if data is a valid data.frame
@@ -133,7 +133,7 @@ if (isEmpty != 0) {
       }
     } else {
       output <- computeFunc(partition, data)
-    }    
+    }
 
     # Timing computing
     computeElap <- elapsedSecs()

@@ -59,7 +59,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
     unresolvedVEncoder.resolve(dataAttributes, OuterScopes.outerScopes)
 
   private def logicalPlan = queryExecution.analyzed
-  private def sqlContext = queryExecution.sqlContext
+  private def sparkSession = queryExecution.sparkSession
 
   /**
    * Returns a new [[KeyValueGroupedDataset]] where the type of the key has been mapped to the
@@ -83,7 +83,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    */
   def keys: Dataset[K] = {
     Dataset[K](
-      sqlContext,
+      sparkSession,
       Distinct(
         Project(groupingAttributes, logicalPlan)))
   }
@@ -108,7 +108,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    */
   def flatMapGroups[U : Encoder](f: (K, Iterator[V]) => TraversableOnce[U]): Dataset[U] = {
     Dataset[U](
-      sqlContext,
+      sparkSession,
       MapGroups(
         f,
         groupingAttributes,
@@ -142,9 +142,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
     func: Array[Byte],
     packageNames: Array[Byte],
     broadcastVars: Array[Object],
-    outputSchema: StructType,
-    vDeserializer: Expression,
-    kDeserializer: Expression): DataFrame = {
+    outputSchema: StructType): DataFrame = {
 
     println("Hello from flatMapRGroups!");
     println(func.length);
@@ -251,10 +249,10 @@ class KeyValueGroupedDataset[K, V] private[sql](
       Alias(CreateStruct(groupingAttributes), "key")()
     }
     val aggregate = Aggregate(groupingAttributes, keyColumn +: namedColumns, logicalPlan)
-    val execution = new QueryExecution(sqlContext, aggregate)
+    val execution = new QueryExecution(sparkSession, aggregate)
 
     new Dataset(
-      sqlContext,
+      sparkSession,
       execution,
       ExpressionEncoder.tuple(unresolvedKEncoder +: encoders))
   }
@@ -323,7 +321,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
       f: (K, Iterator[V], Iterator[U]) => TraversableOnce[R]): Dataset[R] = {
     implicit val uEncoder = other.unresolvedVEncoder
     Dataset[R](
-      sqlContext,
+      sparkSession,
       CoGroup(
         f,
         this.groupingAttributes,

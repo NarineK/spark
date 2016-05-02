@@ -23,13 +23,15 @@ import scala.util.matching.Regex
 
 import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 import org.apache.spark.api.r.SerDe
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Row, SaveMode, SQLContext}
+import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
+import org.apache.spark.sql.Encoder
 import org.apache.spark.sql.types._
 
 private[sql] object SQLUtils {
-
   SerDe.registerSqlSerDe((readSqlObject, writeSqlObject))
 
   def createSQLContext(jsc: JavaSparkContext): SQLContext = {
@@ -130,6 +132,64 @@ private[sql] object SQLUtils {
     bos.toByteArray()
   }
 
+  // Schema for DataFrame of serialized R data
+  // TODO: introduce a user defined type for serialized R data.
+  val SERIALIZED_R_DATA_SCHEMA = StructType(Seq(StructField("R", BinaryType)))
+
+  /**
+   * The helper function for dapply() on R side.
+   */
+  def dapply(
+      df: DataFrame,
+      func: Array[Byte],
+      packageNames: Array[Byte],
+      broadcastVars: Array[Object],
+      schema: StructType): DataFrame = {
+    val bv = broadcastVars.map(x => x.asInstanceOf[Broadcast[Object]])
+    val realSchema =
+      if (schema == null) {
+        SERIALIZED_R_DATA_SCHEMA
+      } else {
+        schema
+      }
+    df.mapPartitionsInR(func, packageNames, bv, realSchema)
+  }
+
+def gapply(
+    df: DataFrame,
+    func: Array[Byte],
+    packageNames: Array[Byte],
+    broadcastVars: Array[Object],
+    schema: StructType,
+    col: String): DataFrame = {
+
+   val realSchema =
+      if (schema == null) {
+        SERIALIZED_R_DATA_SCHEMA
+      } else {
+        schema
+      }
+
+    val dfSchema = df.select(df(col)).schema
+    if (dfSchema.length ==0) throw new IllegalArgumentException(s"Invaid column name $col")
+    val dataType = dfSchema(0).dataType
+  
+   val sqlContext = df.sqlContext 
+   import sqlContext.implicits._ 
+
+    dataType match {
+      case ByteType => df.gapply((r: Row) => r.getAs[Byte](col), func, packageNames, broadcastVars, realSchema)
+      case IntegerType => df.gapply((r: Row) => r.getAs[Int](col), func, packageNames, broadcastVars, realSchema)
+      case FloatType => df.gapply((r: Row) => r.getAs[Float](col), func, packageNames, broadcastVars, realSchema)
+      case DoubleType => df.gapply((r: Row) => r.getAs[Double](col), func, packageNames, broadcastVars, realSchema)
+      case StringType => df.gapply((r: Row) => r.getAs[String](col), func, packageNames, broadcastVars, realSchema)
+      case BinaryType => df.gapply((r: Row) => r.getAs[Array[Byte]](col), func, packageNames, broadcastVars, realSchema)
+      case BooleanType => df.gapply((r: Row) => r.getAs[Boolean](col), func, packageNames, broadcastVars, realSchema)
+      case TimestampType => df.gapply((r: Row) => r.getAs[Long](col), func, packageNames, broadcastVars, realSchema)
+      case _ => throw new IllegalArgumentException(s"Invaid type $dataType")
+     }
+   }
+
   def dfToCols(df: DataFrame): Array[Array[Any]] = {
     val localDF: Array[Row] = df.collect()
     val numCols = df.columns.length
@@ -191,32 +251,4 @@ private[sql] object SQLUtils {
         false
     }
   }
-
- val SERIALIZED_R_DATA_SCHEMA = StructType(Seq(StructField("R", BinaryType)))
-
-def gapply( 
-    df: DataFrame,
-    func: Array[Byte],
-    packageNames: Array[Byte],
-    broadcastVars: Array[Object],
-    outputSchema: StructType,
-    col: String, cols: String*): DataFrame = {
-
-    import df.sqlContext.implicits._
-    
-    val dfSchema = df.select(df(col)).schema
-    if (dfSchema.length ==0) throw new IllegalArgumentException(s"Invaid column name $col")
-    val dataType = dfSchema(0).dataType
-    dataType match {
-      case ByteType => df.gapply((r: Row) => r.getAs[Byte](col), func, packageNames, broadcastVars, outputSchema)
-      case IntegerType => df.gapply((r: Row) => r.getAs[Int](col), func, packageNames, broadcastVars, outputSchema)
-      case FloatType => df.gapply((r: Row) => r.getAs[Float](col), func, packageNames, broadcastVars, outputSchema)
-      case DoubleType => df.gapply((r: Row) => r.getAs[Double](col), func, packageNames, broadcastVars, outputSchema)
-      case StringType => df.gapply((r: Row) => r.getAs[String](col), func, packageNames, broadcastVars, outputSchema)
-      case BinaryType => df.gapply((r: Row) => r.getAs[Array[Byte]](col), func, packageNames, broadcastVars, outputSchema)
-      case BooleanType => df.gapply((r: Row) => r.getAs[Boolean](col), func, packageNames, broadcastVars, outputSchema)
-      case TimestampType => df.gapply((r: Row) => r.getAs[Long](col), func, packageNames, broadcastVars, outputSchema)
-      case _ => throw new IllegalArgumentException(s"Invaid type $dataType")
-     }
-   }
 }
